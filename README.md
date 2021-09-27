@@ -13,15 +13,17 @@ This tool can only work with VIP project and cannot be used in RTP. Please downl
 put it in the VIP project directory, then refresh the project and compile it with the project together.\
 Call tr_start() and tr_stop() before and after the target software, and the debugging function will be\
 automatically executed. Such as:\
+```shell
     tr_start();\
     ...\
     ...\
     tr_stop();\
-    \
+```
 Or you can call tr_start on shell directly.\
+```shell
     -> tr_start\
     value = 0 = 0x0\
-    \
+```
 After calling tr_start(), the information will be collected automatically. When tr_stop() is called,\
 stop collecting and analyzing the collected information, and then print the results.\
 The buffer has limitation, collecting also will stop if reach the end. You can change the buffer size\
