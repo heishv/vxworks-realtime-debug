@@ -32,18 +32,18 @@ Configuring
 /* Maximum core number */\
 #define TRACE_CORE_NUM                  32\
 
-/* Maximum number of records that can be recorded for each core */\
+/* Maximum number of records that can be recorded for each core */ \
 #define TRACE_RECORD_NUM                2000\
 
-/* Worker task priority, should higher than idle task, but lower than realtime task */\
+/* Worker task priority, should higher than idle task, but lower than realtime task */ \
 #define TRACE_WORKER_TASK_PRIORITY      200\
 
-/* If defined, loop layover, layover from start when reach max record number */\
-/* Or finish when reach max record number. */\
+/* If defined, loop layover, layover from start when reach max record number */ \
+/* Or finish when reach max record number. */ \
 /*#define TRACE_LAYOVER_ENABLE*/\
 
-/* If define TRACE_SAVE_FILE_ENABLE, need enable dosfs related components */\
-/* TRACE_TARGET_FILE should include full path and file name, suchu as "/sd0:1/trace" or "host:/trace" */\
+/* If define TRACE_SAVE_FILE_ENABLE, need enable dosfs related components */ \
+/* TRACE_TARGET_FILE should include full path and file name, suchu as "/sd0:1/trace" or "host:/trace" */ \
 /*#define TRACE_SAVE_FILE_ENABLE*/\
 #define TRACE_TARGET_FILE               "host:/trace"\
 
