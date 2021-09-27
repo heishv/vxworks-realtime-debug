@@ -1,7 +1,7 @@
 vxWorks realtime debug tools
 ============================
-This repository used for debug realtime feature on vxWorks. vxWorks is a realtime operating system,\<br> 
-support absolutely task preempt base on priority. But in most cases, fine debugging is needed to \<br> 
+This repository used for debug realtime feature on vxWorks. vxWorks is a realtime operating system,
+support absolutely task preempt base on priority. But in most cases, fine debugging is needed to 
 achieve the goal. Many debugging tools are based on statistics. In a large number of statistical 
 data, individual special cases will be covered by the average value. However, in actual use, we hope 
 there will be no violation. The main purpose of this tool is to capture the usage over a period of 
