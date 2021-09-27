@@ -1,28 +1,28 @@
 vxWorks realtime debug tools
 ============================
 This repository used for debug realtime feature on vxWorks. vxWorks is a realtime operating system, \
-support absolutely task preempt base on priority. But in most cases, fine debugging is needed to 
-achieve the goal. Many debugging tools are based on statistics. In a large number of statistical 
-data, individual special cases will be covered by the average value. However, in actual use, we hope 
-there will be no violation. The main purpose of this tool is to capture the usage over a period of 
+support absolutely task preempt base on priority. But in most cases, fine debugging is needed to \
+achieve the goal. Many debugging tools are based on statistics. In a large number of statistical \
+data, individual special cases will be covered by the average value. However, in actual use, we hope \
+there will be no violation. The main purpose of this tool is to capture the usage over a period of \
 time, find out special cases, and provide materials for further analysis.
 
 Building, running, testing
 ==========================
-This tool can only work with VIP project and cannot be used in RTP. Please download the repository and 
-put it in the VIP project directory, then refresh the project and compile it with the project together.
-Call tr_start() and tr_stop() before and after the target software, and the debugging function will be
-automatically executed. Such as:
-    tr_start();
-    ...
-    ...
-    tr_stop();
-Or you can call tr_start on shell directly.
-    -> tr_start
-    value = 0 = 0x0
-After calling tr_start(), the information will be collected automatically. When tr_stop() is called,
-stop collecting and analyzing the collected information, and then print the results.
-The buffer has limitation, collecting also will stop if reach the end. You can change the buffer size
+This tool can only work with VIP project and cannot be used in RTP. Please download the repository and \
+put it in the VIP project directory, then refresh the project and compile it with the project together.\
+Call tr_start() and tr_stop() before and after the target software, and the debugging function will be\
+automatically executed. Such as:\
+    tr_start();\
+    ...\
+    ...\
+    tr_stop();\
+Or you can call tr_start on shell directly.\
+    -> tr_start\
+    value = 0 = 0x0\
+After calling tr_start(), the information will be collected automatically. When tr_stop() is called,\
+stop collecting and analyzing the collected information, and then print the results.\
+The buffer has limitation, collecting also will stop if reach the end. You can change the buffer size\
 in realtime_debug_config.h.
 
 Configuring
