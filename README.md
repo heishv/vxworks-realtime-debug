@@ -65,4 +65,3 @@ Tested environment:
 known problem:
 Because can't get detail timer info, it can't work on vxWorks6.9.4.12 simulator, and can't get detail 
 timer counter value on vxWorks7.0 simulator.
-
