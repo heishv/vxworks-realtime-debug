@@ -1,5 +1,3 @@
-# vxworks-realtime-debug
-
 vxWorks realtime debug tools
 ============================
 This repository used for debug realtime feature on vxWorks. vxWorks is a realtime operating system,
