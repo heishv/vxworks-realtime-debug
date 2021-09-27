@@ -77,6 +77,7 @@ Tested architecture:\
 known problem:\
 Because can't get detail timer info, it can't work on vxWorks6.9.4.12 simulator, and can't get detail \
 timer counter value on vxWorks7.0 simulator.
+X86 system have two timer, if default configuration can't work, please change SYSCLK_TIMER_NAME to "Intel 8253 Timer"
 
 Result feedback
 ===============
