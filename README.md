@@ -71,7 +71,12 @@ timer counter value on vxWorks7.0 simulator.\
 
 Result feedback
 ===============
-'''
+## Contributing
+```shell
+$ cd openupf
+$ sudo ./install/script/install-dep.sh  # Install compilation dependency
+```
+
 <!-- Please keep this list sorted in alphabetic order -->
 |-> current pos on core 0 is 2000, rollover is 825000.
 |     0  tick: 494-11699    old_task: 0150cae0 tShellRem26922888    -->    new_task: 01506a40 tStdioProxy1506760
