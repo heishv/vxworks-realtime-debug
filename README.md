@@ -68,4 +68,48 @@ Tested environment:\
 known problem:\
 Because can't get detail timer info, it can't work on vxWorks6.9.4.12 simulator, and can't get detail \
 timer counter value on vxWorks7.0 simulator.\
-\
+
+Result feedback
+===============
+<!-- Please keep this list sorted in alphabetic order -->
+|-> current pos on core 0 is 2000, rollover is 825000.
+|     0  tick: 494-11699    old_task: 0150cae0 tShellRem26922888    -->    new_task: 01506a40 tStdioProxy1506760
+|     1  tick: 494-14172    old_task: 01506a40 tStdioProxy1506760   -->    new_task: 01451b10 tNet0
+|     2  tick: 494-17644    old_task: 01451b10 tNet0                -->    new_task: 01506760 ipcom_telnetspawn
+|     3  tick: 494-19572    old_task: 01506760 ipcom_telnetspawn    -->    new_task: 01451b10 tNet0
+|     4  tick: 494-20388    old_task: 01451b10 tNet0                -->    new_task: 01532340 tr_worker
+|     5  tick: 494-20516    old_task: 01532340 tr_worker            -->    new_task: 01532620 tr_idle
+|     6  tick: 494-20860    old_task: 01532620 tr_idle              -->    new_task: 01451b10 tNet0
+|     7  tick: 494-21235    old_task: 01451b10 tNet0                -->    new_task: 01532620 tr_idle
+|     8  tick: 497-148535   old_task: 01532620 tr_idle              -->    new_task: 01451b10 tNet0
+|     |         |     |                   |       |
+|     |         |     |                   |       |--------> task name
+|     |         |     |                   |----------------> task id
+|     |         |     |------------------------------------> timer counter value(it is a tick if reach to rollover, then start from 0 again)
+|     |         |------------------------------------------> tick
+|     |----------------------------------------------------> index
+|
+|
+|       task_name    times      min_cost            max_cost         min_interval        max_interval       total_cost
+|       ---------    -----   --------------      --------------      ------------        ------------       ----------
+|      tIdleTask3       58   0.0005(3-52)       29.9988(3-75)        0.0015(0-53)       29.9999(3-76)      498.9716
+|            tTcf        2   0.0013(2-466)       0.0014(2-464)       0.0019(0-465)       0.0019(0-465)       0.0028
+|      tIdleTask2      659   0.0004(2-455)       4.9998(2-67)        0.0012(2-608)       5.0012(2-8)       657.2426
+| tShellRem18446>       24   0.0009(1-47)        0.1917(2-604)       0.1067(0-633)     172.5077(1-549)       0.5052
+| ipcom_telnetsp>      153   0.0007(2-624)       0.0026(2-546)       0.0012(3-625)     193.9230(2-327)       0.1841
+|      tIdleTask1      434   0.0005(1-327)      24.2442(1-26)        0.0016(1-484)      24.2466(1-27)      656.0825
+|      tTcfEvents        9   0.0013(2-452)       0.0067(2-456)       0.0017(0-455)       0.0284(0-869)       0.0209
+|    tr_test_give      503   0.0005(1-379)       0.0025(3-70)        0.9986(0-559)     165.9988(3-58)        0.6196
+|    tr_test_take      477   0.0004(0-387)       0.0018(3-3)         0.0468(3-393)      30.0000(3-75)        0.3080
+|   miiBusMonitor        5   0.0313(0-245)       0.0316(0-1507)    119.9999(0-1924)    120.0000(0-1506)      0.1576
+|       tr_worker       11   0.0004(1-1)         0.0006(0-486)      59.9998(0-1133)     60.0000(0-692)       0.0063
+|        tExcTask      654   0.0004(2-558)       0.0032(2-692)       0.9951(0-1838)     44.9998(2-36)        0.8661
+|            tTcf      121   0.0010(0-161)       0.0024(2-718)       4.9998(0-378)     114.9998(2-1109)      0.1457
+| tStdioProxy202>       56   0.0006(2-88)        0.0169(1-324)       0.0021(2-511)     172.4797(1-291)       0.1414
+|      tIdleTask0      998   0.0005(0-388)       0.9996(0-48)        0.0009(0-387)       1.0302(0-245)     602.5604
+|           tNet0      141   0.0008(0-129)       0.3091(0-1084)      0.0018(0-857)      30.0000(0-1325)      1.1841
+|                       |           |   |
+|                       |           |   |-----------------> index number
+|                       |           |---------------------> core
+|                       |---------------------------------> how many times has the task been activated             
+
