@@ -12,14 +12,14 @@ Building, running, testing
 This tool can only work with VIP project and cannot be used in RTP. Please download the repository and \
 put it in the VIP project directory, then refresh the project and compile it with the project together.\
 Call tr_start() and tr_stop() before and after the target software, and the debugging function will be\
-automatically executed. Such as:\
+automatically executed. Such as:
 ```shell
     tr_start();
     ...
     ...
     tr_stop();
 ```
-Or you can call tr_start on shell directly.\
+Or you can call tr_start on shell directly.
 ```shell
     -> tr_start
     value = 0 = 0x0
