@@ -471,6 +471,9 @@ void tr_summary()
 static int tr_remove()
 {
     int core_idx, core_num;
+#ifdef TRACE_SAVE_FILE_ENABLE
+    char file_name[128];
+#endif
 
     /* Get core number */
     core_num = vxCpuConfiguredGet();
