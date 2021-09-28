@@ -15,7 +15,7 @@
 #elif (_WRS_VXWORKS_MAJOR==7)
 #include <subsys/timer/vxbTimerLib.h>
 #endif
-#include <private/timerLibP.h>		/* _func_clkTimer* */
+#include <private/timerLibP.h>
 #include <usrLib.h>
 #include <strlib.h>
 
