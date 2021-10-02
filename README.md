@@ -192,8 +192,10 @@ Get 9 preempt event(push 21, pop 12):
   . 546-3137       (DISPATCH)     task stub1 running
   . 546-3628       (SEMGIVE)      task stub3 ready by semGive 20b9f8c8
 ----546-88101      (SEMTAKE)      task pending by semTake 20bbcf68
-  |                    |
-  |                    |---------> event name
+  |  |   |             |
+  |  |   |             |---------> event name
+  |  |   |-----------------------> timer counter value(it is a tick if reach to rollover, then start from 0 again) 
+  |  |---------------------------> tick
   |------------------------------> mark, '----' mark a round of task invoking, '|' means normal, '.' means preemption started
 
 ```
