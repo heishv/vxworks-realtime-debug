@@ -67,8 +67,8 @@ static int tr_sysclkcount_get(unsigned int *clkCnt)
 
     if ((clkCnt == NULL)
       ||(clk_timer == NULL)
-	  ||(clk_timer->timerCountGet == NULL)) {
-	    return ERROR;
+      ||(clk_timer->timerCountGet == NULL)) {
+        return ERROR;
     }
 
     /* Get time stamp register number */
@@ -142,7 +142,7 @@ static int tr_save(int core_idx, FILE *file)
     for (loop_idx = 0; loop_idx < max_idx; loop_idx++) {
         if (taskIdVerify ((TASK_ID)tr_log_buf[core_idx][loop_idx].value1) == OK) {
             tmp_tcb  = (WIND_TCB *)tr_log_buf[core_idx][loop_idx].value1;
-            old_name = tmp_tcb->objCore.name;
+            old_name = taskName((TASK_ID)tmp_tcb);
         }
         else {
             old_name = "";
@@ -150,7 +150,7 @@ static int tr_save(int core_idx, FILE *file)
 
         if (taskIdVerify ((TASK_ID)tr_log_buf[core_idx][loop_idx].value2) == OK) {
             tmp_tcb  = (WIND_TCB *)tr_log_buf[core_idx][loop_idx].value2;
-            new_name = tmp_tcb->objCore.name;
+            new_name = taskName((TASK_ID)tmp_tcb);
         }
         else {
             new_name = "";
@@ -309,7 +309,7 @@ static void tr_print_task_desc(TRACE_TASK_SUMMARY *head)
         if (taskIdVerify((TASK_ID)tmp_tcb) != ERROR) {
             print_name[0]  = 0;
             print_name[14] = 0;
-            strncpy(print_name, tmp_tcb->objCore.name, 16);
+            strncpy(print_name, taskName((TASK_ID)tmp_tcb), 16);
             print_name[15] = 0;
             if (print_name[14] != 0) {
                 print_name[14] = '>';

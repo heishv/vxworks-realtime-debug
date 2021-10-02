@@ -6,7 +6,8 @@
 
 /* Default configuration for task_switch_trace */
 
-/* Maximum core number */
+/* Maximum core number, if real core number greater than it, initialization will be failed. */
+/* If real core number less than it, record info by real core number */
 #define TRACE_CORE_NUM                  32
 
 /* Maximum number of records that can be recorded for each core */
@@ -38,7 +39,14 @@
 
 
 
-/* Default configuration for preemt_analysis */
+/* Default configuration for task_preemt_analysis */
+
+/* If target task was preempted, save as a event. How many events are allowed to be save */
+/* Reach this number, recording will be stopped automatically */
+#define PREEMPT_EVENT_MAX_NUMBER        1000
+
+/* If enabled, record all events related to the target task. Otherwise, only preemption events are recorded */
+/*#define PREEMPT_SAVE_ALL_ENABLE*/
 
 
 
