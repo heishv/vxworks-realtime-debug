@@ -5,7 +5,23 @@ support absolutely task preempt base on priority. But in most cases, fine debugg
 achieve the goal. Many debugging tools are based on statistics. In a large number of statistical \
 data, special cases will be covered by the average value. However, in actual use, we hope there will \
 be no violation. The main purpose of this tool is to capture the usage over a period of time, find \
-out special cases, and provide materials for further analysis.
+out special cases, and provide materials for further analysis. \
+In this repository, include two parts of features, one is task switch tracing, capture all task switch \
+action, calculate task max cost and min cost, max interval and min interval between two continuous \
+invoke. For a specific task, the consumption of each call should be about the same. If it is a periodic \
+task, its call interval should also be the same. If the gap is too large, you need to find a reason. \
+This tool will help you to find, this is the main purpose of this function. \
+Another function is to record task preemption. WinDriver has a tool(SystemView) that can record all \
+system events, but it is not easy to find a specific violation in a large number of events. This tool \
+also uses same event recording mechanism of SystemView to record the target task for debugging. The \
+debugging target can only be set to one, which can be the name or ID of the task. For tasks that are \
+executed immediately after activation and then blocked, we think this is normal. There is no preemption, \
+and such records will be erased from the records. If the target task is not executed immediately after \
+activation, or there are other tasks or interrupted execution during execution, we think preemption has \
+occurred and will be recorded. We only show preemption cases. The engineers can readjust the priority \
+of tasks or the activation relationship between tasks according to the specific semaphores, tasks and \
+other information of preemption.
+
 
 Building, running, testing
 ==========================
@@ -19,20 +35,29 @@ automatically executed. Such as:
     ...
     tr_stop();
 ```
+Or
+```shell
+    pr_start();
+    ...
+    ...
+    pr_stop
+```
 Or you can call tr_start on shell directly.
 ```shell
     -> tr_start
     value = 0 = 0x0
 ```
-After calling tr_start(), the information will be collected automatically. When tr_stop() is called,\
-stop collecting and analyzing the collected information, and then print the results.\
+After calling tr_start()/pr_start, the information will be collected automatically. When tr_stop()/pr_stop \
+is called, stop collecting and analyzing the collected information, and then print the results.\
 The buffer has limitation, collecting also will stop if reach the end. You can change the buffer size\
 in realtime_debug_config.h.
 
-Configuring
-===========
+## Configuring
 ```shell
-/* Maximum core number */
+/* Default configuration for task_switch_trace */
+
+/* Maximum core number, if real core number greater than it, initialization will be failed. */
+/* If real core number less than it, record info by real core number */
 #define TRACE_CORE_NUM                  32
 
 /* Maximum number of records that can be recorded for each core */
@@ -47,8 +72,8 @@ Configuring
 
 /* If define TRACE_SAVE_FILE_ENABLE, need enable dosfs related components */
 /* TRACE_TARGET_FILE should include full path and file name, suchu as "/sd0:1/trace" or "host:/trace" */
-/*#define TRACE_SAVE_FILE_ENABLE*/
-#define TRACE_TARGET_FILE               "host:/trace"
+#define TRACE_SAVE_FILE_ENABLE
+#define TRACE_TARGET_FILE               "/sd0:1/trace"
 
 /* Print all info after tr_stop() invoked */
 #define TRACE_PRINT_ENABLE
@@ -61,26 +86,41 @@ Configuring
 /* To let test result more accurate. */
 /* For multi-core cpu, vxWorks will create idle task automatically, don't need enable it again. */
 /*#define TRACE_IDLE_TASK_ENABLE*/
+
+
+
+/* Default configuration for task_preemt_analysis */
+
+/* If target task was preempted, save as a event. How many events are allowed to be save */
+/* Reach this number, recording will be stopped automatically */
+#define PREEMPT_EVENT_MAX_NUMBER        1000
+
+/* If enabled, record all events related to the target task. Otherwise, only preemption events are recorded */
+/*#define PREEMPT_SAVE_ALL_ENABLE*/
+
 ```
 
 Tested environment and known problem
 ====================================
-## Tested environment:
+
+Tested environment:
     vxWorks6.9.4.12
     vxWorks7.0
     
-## Tested architecture:
+Tested architecture:
     PPC
     ARM
     X86
     
-## known problem:
+known problem:
 Because can't get detail timer info, it can't work on vxWorks6.9.4.12 simulator, and can't get detail \
 timer counter value on vxWorks7.0 simulator.
+Task preemption anslysis tool can't work in vxWorks6.9.
 X86 system have two timer, if default configuration can't work, please change SYSCLK_TIMER_NAME to "Intel 8253 Timer"
 
-Result feedback
-===============
+
+Task switch trace
+=================
 The original data of task switching can be printed directly or recorded in a file. If it is a multi-core \
 system, the task switching of each core will be recorded in a separate file. If you need to check the \
 task switching between multiple cores, please find the data in the same time period between different \
@@ -129,6 +169,33 @@ call interval may be inaccurate, and this error is no plan to correct in the aut
                        |           |   |-----------------> index number
                        |           |---------------------> core
                        |---------------------------------> how many times has the task been activated             
+```
+
+
+Task preemtion analysis
+=======================
+Only one task can be tracked at the same time. Setting multiple target tasks is not supported. If  \
+PREEMPT_SAVE_ALL_ENABLE is defined, all events related to the target task will be recorded, otherwise \
+only the preemption events will be recorded. Blow is the record format:
+```shell
+                         |----------------> total 21 events captured, each line is a event
+                         |       |--------> 12 events is normal case, ignored
+                         |       |
+Get 9 preempt event(push 21, pop 12):
+
+----546-929        (SEMGIVE)      task stub1 ready by semGive 20bbcf68
+  | 546-1367       (TICKUNDELAY)  task stub2 ready by taskDelay timeout
+  | 546-1793       (SEMGIVE)      task tExcTask ready by semGive 83b3e0
+  | 546-2165       (INT_EXIT)     interrupt exit
+  . 546-2550       (DISPATCH)     task tExcTask running
+  . 546-2694       (SEMTAKE)      task pending by semTake 83b3e0
+  . 546-3137       (DISPATCH)     task stub1 running
+  . 546-3628       (SEMGIVE)      task stub3 ready by semGive 20b9f8c8
+----546-88101      (SEMTAKE)      task pending by semTake 20bbcf68
+  |                    |
+  |                    |---------> event name
+  |------------------------------> mark, '----' mark a round of task invoking, '|' means normal, '.' means preemption started
+
 ```
 
 Contact us
