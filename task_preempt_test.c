@@ -5,6 +5,7 @@
  */
 
 #include <vxWorks.h>
+#if (_WRS_VXWORKS_MAJOR==7)
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
@@ -116,7 +117,7 @@ STATUS pr_test_stub4()
 {
     struct ifreq req;
     int netfd;
-    int ret;
+    ssize_t ret;
     char ethname[] = "cpsw0";
     uint8_t tmpbuf[1600];
 
@@ -195,7 +196,7 @@ void pr_test_dbg_info()
 */
 void pr_test(int index)
 {
-    int32_t tidTarget1, tidTarget2, tidTarget3, tidTarget4, tidTarget;
+    TASK_ID tidTarget1, tidTarget2, tidTarget3, tidTarget4, tidTarget;
     extern void td(long taskNameOrId);
 
     if (pr_test_sem_bin == NULL) {
@@ -243,14 +244,15 @@ void pr_test(int index)
             break;
     }
 
-    pr_start(tidTarget);
+    pr_start((long)tidTarget);
     taskDelay(500);
     pr_stop();
 
-    td(tidTarget1);
-    td(tidTarget2);
-    td(tidTarget3);
-    td(tidTarget4);
+    td((long)tidTarget1);
+    td((long)tidTarget2);
+    td((long)tidTarget3);
+    td((long)tidTarget4);
     wdCancel(pr_test_wd);
 }
+#endif
 

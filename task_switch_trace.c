@@ -110,7 +110,8 @@ static int tr_save(int core_idx, FILE *file)
     char tmp_buf[64];
     size_t write_cnt, str_len;
     unsigned int loop_idx, max_idx;
-    unsigned int roll_over, buf_len, iloop, num_len, pos;
+    unsigned int roll_over, iloop, num_len, pos;
+    size_t buf_len;
     char *old_name, *new_name;
     FAST WIND_TCB *tmp_tcb;
     timerHandle_t clk_timer;

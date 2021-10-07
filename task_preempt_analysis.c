@@ -5,6 +5,7 @@
  */
 
 #include <vxWorks.h>
+#if (_WRS_VXWORKS_MAJOR==7)
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
@@ -45,7 +46,7 @@ LOCAL STATUS pr_event_pop(void);
 #endif
 
 LOCAL int32_t pr_collector_init;
-LOCAL int32_t pr_target_task;
+LOCAL TASK_ID pr_target_task;
 LOCAL _Vx_usr_arg_t pr_target_ent_event;
 LOCAL int8_t  pr_monitor_status = PR_MONITOR_STATUS_IDLE;
 LOCAL int8_t  pr_preempt_flag;
@@ -113,8 +114,8 @@ static UINT32 pr_sysclkcount_get()
 STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
 {
     PR_EVENT_NODE      *eventBase;
-    int32_t             newTask;
-    int32_t             newEvent;
+    TASK_ID             newTask;
+    _Vx_usr_arg_t       newEvent;
     size_t              event_size;
     EVT_TASK_1_T        *taskEvt;
     /*struct msg_q        *msgQId;*/
@@ -146,7 +147,7 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
             if (EVENT_OBJ_SEMGIVE == action) {
                 taskEvt = (EVT_TASK_1_T *)addr;
                 /* Get actived task */
-                newTask = (int32_t)SEM_OWNER((SEM_ID)(taskEvt->args[0]));
+                newTask = (TASK_ID)SEM_OWNER((SEM_ID)(taskEvt->args[0]));
             }
             /*else if (EVENT_OBJ_MSGSEND == action) {
                 taskEvt = (EVT_TASK_1_T *)addr;
@@ -157,7 +158,7 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                    ||(EVENT_WINDTICKUNDELAY == action)
                    ||(EVENT_WINDTICKTIMEOUT == action)){
                 taskEvt = (EVT_TASK_1_T *)addr;
-                newTask = taskEvt->args[0];
+                newTask = (TASK_ID)taskEvt->args[0];
             }
             else {
                 /* Should not come here */
@@ -193,7 +194,7 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                     break;
             }
 
-            PR_DBG_PRINT("%s: to activate %s\r\n", pr_get_action_name(action), taskName((TASK_ID)newTask));
+            PR_DBG_PRINT("%s: to activate %s\r\n", pr_get_action_name(action), taskName(newTask));
             PR_DBG_PRINT("  current status is %d, preempt flag is %d\r\n", pr_monitor_status, pr_preempt_flag);
             break;
 
@@ -202,7 +203,7 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
         case EVENT_WIND_EXIT_DISPATCH_PI:
             ctxInfo = (EVENT_WIND_EXIT_DISPATCH_T *)addr;
 
-            newTask = (int32_t)ctxInfo->taskIdNew;
+            newTask = (TASK_ID)ctxInfo->taskIdNew;
 
             /* Status machine */
             switch (pr_monitor_status) {
@@ -254,7 +255,7 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                     break;
             }
 
-            PR_DBG_PRINT("%s: to schedule %s\r\n", pr_get_action_name(action), taskName((TASK_ID)newTask));
+            PR_DBG_PRINT("%s: to schedule %s\r\n", pr_get_action_name(action), taskName(newTask));
             PR_DBG_PRINT("  current status is %d, preempt flag is %d\r\n", pr_monitor_status, pr_preempt_flag);
             break;
 
@@ -412,7 +413,7 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
 
     /* Increase stack */
     if (pr_event_mng_cur + 1 < PREEMPT_EVENT_MAX_NUMBER) {
-        pr_event_mng[pr_event_mng_cur + 1] = pr_event_mng[pr_event_mng_cur] + event_size;
+        pr_event_mng[pr_event_mng_cur + 1] = pr_event_mng[pr_event_mng_cur] + (int32_t)event_size;
         pr_event_mng_cur++;
     }
 
@@ -721,7 +722,7 @@ LOCAL void pr_collector_tick_timeout(DATA_COLLECTOR_ID data_collector, const voi
 LOCAL void pr_collector_tick_delay(DATA_COLLECTOR_ID data_collector, const void *args, size_t size)
 {
     EVT_TASK_1_T evt;
-    evt.args[0] = taskIdSelf();
+    evt.args[0] = (_Vx_usr_arg_t)taskIdSelf();
 
     pr_event_push(EVENT_WINDDELAY, &evt, size);
 }
@@ -841,8 +842,8 @@ char *pr_get_action_name(event_t action)
 */
 void pr_get_string(char *str, event_t action, uint32_t tick, uint32_t counter, TASK_ID taskId)
 {
-    char timestr[32];
-    int  padlen;
+    char    timestr[32];
+    size_t  padlen;
 
     sprintf(timestr, "%u-%u", tick, counter);
 
@@ -923,14 +924,14 @@ STATUS pr_print()
 {
     int32_t         eventNum;
     int32_t         loopNo;
-    int32_t         targetTask = 0;
+    TASK_ID         targetTask = 0;
     int16_t         action;
     uint32_t        counter;
     uint32_t        tick;
     TASK_ID         taskId;
     int32_t         status;
     uint8_t         preempt;
-    int32_t         semId;
+    _Vx_usr_arg_t   semId;
     EVT_TASK_1_T    *taskEvt;
     /*struct msg_q    *msgQId;*/
     char            str[256];
@@ -980,7 +981,7 @@ STATUS pr_print()
 
                 /* Get actived task */
                 semId  = (taskEvt->args[0]);
-                taskId = (int32_t)SEM_OWNER((SEM_ID)(taskEvt->args[0]));
+                taskId = (TASK_ID)SEM_OWNER((SEM_ID)(taskEvt->args[0]));
                 if (!targetTask) {
                     targetTask = taskId;
                 }
@@ -1005,7 +1006,7 @@ STATUS pr_print()
             case EVENT_WINDTICKUNDELAY:
             case EVENT_WINDTICKTIMEOUT:
                 taskEvt = (EVT_TASK_1_T *)eventBase->data;
-                taskId  = taskEvt->args[0];
+                taskId  = (TASK_ID)taskEvt->args[0];
                 if (!targetTask) {
                     targetTask = taskId;
                 }
@@ -1016,7 +1017,7 @@ STATUS pr_print()
             case EVENT_OBJ_SEMTAKE:
                 taskEvt = (EVT_TASK_1_T *)eventBase->data;
                 semId   = taskEvt->args[0];
-                pr_get_string(str, action, tick, counter, semId);
+                pr_get_string(str, action, tick, counter, (TASK_ID)semId);
                 printf("%s%s %x\r\n", headstr, str, semId);
                 break;
 
@@ -1030,7 +1031,7 @@ STATUS pr_print()
             case EVENT_WIND_EXIT_DISPATCH:
             case EVENT_WIND_EXIT_DISPATCH_PI:
                 ctxInfo = (EVENT_WIND_EXIT_DISPATCH_T *)eventBase->data;
-                taskId  = (int32_t)ctxInfo->taskIdNew;
+                taskId  = (TASK_ID)ctxInfo->taskIdNew;
 
                 pr_get_string(str, action, tick, counter, taskId);
                 printf("%s%s\r\n", headstr, str);
@@ -1040,7 +1041,7 @@ STATUS pr_print()
             case EVENT_INT_EXIT_K:
             case EVENT_INT_EXIT:
                 intInfo = (EVENT_INT_ENTER_T *)eventBase->data;
-                pr_get_string(str, action, tick, counter, intInfo->interruptId);
+                pr_get_string(str, action, tick, counter, (TASK_ID)intInfo->interruptId);
                 printf("%s%s\r\n", headstr, str);
                 break;
 
@@ -1077,7 +1078,7 @@ STATUS pr_start(long taskNameOrId)
 
     /* Keep original value, it maybe a watchdog ID */
     if (tid == TASK_ID_ERROR){
-        pr_target_task = taskNameOrId;
+        pr_target_task = (TASK_ID)taskNameOrId;
     }
     else {
         pr_target_task = tid;
@@ -1136,4 +1137,5 @@ STATUS pr_stop()
 
     return OK;
 }
+#endif
 
