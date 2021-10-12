@@ -39,7 +39,9 @@ LOCAL void pr_collector_tick_timeout(DATA_COLLECTOR_ID data_collector, const voi
 /*LOCAL void pr_collector_tick_announce_tmr_wd(DATA_COLLECTOR_ID data_collector, const void *args, size_t size);*/
 LOCAL void pr_collector_tick_delay(DATA_COLLECTOR_ID data_collector, const void *args, size_t size);
 /*LOCAL void pr_collector_wd_start(DATA_COLLECTOR_ID data_collector, const void *args, size_t size);*/
+#ifdef PR_ENABLE_DEBUG
 LOCAL char *pr_get_action_name(event_t action);
+#endif
 LOCAL STATUS pr_event_push(event_t action, const void *addr, size_t nbytes);
 #ifndef PREEMPT_SAVE_ALL_ENABLE
 LOCAL STATUS pr_event_pop(void);
@@ -47,15 +49,16 @@ LOCAL STATUS pr_event_pop(void);
 
 LOCAL int32_t pr_collector_init;
 LOCAL TASK_ID pr_target_task;
+LOCAL int32_t pr_target_core;
 LOCAL _Vx_usr_arg_t pr_target_ent_event;
 LOCAL int8_t  pr_monitor_status = PR_MONITOR_STATUS_IDLE;
-LOCAL int8_t  pr_preempt_flag;
-LOCAL int32_t pr_event_mng[PREEMPT_EVENT_MAX_NUMBER];
-LOCAL int32_t pr_event_mng_cur;
-LOCAL uint8_t *pr_event_buf;
+LOCAL cpuset_t pr_preempt_flag;
+PR_EVENT_NODE pr_event_mng[PREEMPT_EVENT_MAX_NUMBER];
+int32_t pr_event_mng_cur;
 
 LOCAL int32_t pr_cnt_push;
 LOCAL int32_t pr_cnt_pop;
+spinlockTask_t pr_spinlock;
 
 
 /* list of data collectors for each event. */
@@ -113,13 +116,14 @@ static UINT32 pr_sysclkcount_get()
 */
 STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
 {
-    PR_EVENT_NODE      *eventBase;
+    PR_EVENT_NODE       *eventBase;
+    SEM_ID              tmpSem;
     TASK_ID             newTask;
     _Vx_usr_arg_t       newEvent;
-    size_t              event_size;
     EVT_TASK_1_T        *taskEvt;
     /*struct msg_q        *msgQId;*/
     EVENT_WIND_EXIT_DISPATCH_T *ctxInfo;
+    uint32_t            core_idx;
 
     /* If no target task, don't save anything */
     if (!pr_target_task) {
@@ -136,6 +140,12 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
         return (ERROR);
     }
 
+    core_idx = vxCpuIndexGet();
+    if ((pr_monitor_status == PR_MONITOR_STATUS_RUNNING)
+      &&(core_idx != pr_target_core)) {
+        return (ERROR);
+    }
+
     switch(action) {
         /* Handle the events that activate a task */
         case EVENT_OBJ_SEMGIVE:
@@ -146,8 +156,10 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
 
             if (EVENT_OBJ_SEMGIVE == action) {
                 taskEvt = (EVT_TASK_1_T *)addr;
+                tmpSem  = (SEM_ID)(taskEvt->args[0]);
+
                 /* Get actived task */
-                newTask = (TASK_ID)SEM_OWNER((SEM_ID)(taskEvt->args[0]));
+                newTask = (TASK_ID)NODE_PTR_TO_TCB(Q_FIRST(&tmpSem->qHead));
             }
             /*else if (EVENT_OBJ_MSGSEND == action) {
                 taskEvt = (EVT_TASK_1_T *)addr;
@@ -170,8 +182,8 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                 case PR_MONITOR_STATUS_IDLE:
                     /* This task is activated for the first time, put it in monitor channel */
                     if (newTask == pr_target_task) {
-                        pr_monitor_status  = PR_MONITOR_STATUS_ACTIVE;
-                        pr_preempt_flag    = FALSE;
+                        pr_monitor_status   = PR_MONITOR_STATUS_ACTIVE;
+                        CPUSET_ZERO(pr_preempt_flag);
 
                         /* Don't touch it, need to keep same structure with pending event */
                         pr_target_ent_event = taskEvt->args[0];
@@ -194,6 +206,8 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                     break;
             }
 
+            newEvent = (_Vx_usr_arg_t)newTask;
+
             PR_DBG_PRINT("%s: to activate %s\r\n", pr_get_action_name(action), taskName(newTask));
             PR_DBG_PRINT("  current status is %d, preempt flag is %d\r\n", pr_monitor_status, pr_preempt_flag);
             break;
@@ -202,7 +216,6 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
         case EVENT_WIND_EXIT_DISPATCH:
         case EVENT_WIND_EXIT_DISPATCH_PI:
             ctxInfo = (EVENT_WIND_EXIT_DISPATCH_T *)addr;
-
             newTask = (TASK_ID)ctxInfo->taskIdNew;
 
             /* Status machine */
@@ -211,7 +224,8 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                     /* Wrong status, no activate, but directly running */
                     if (newTask == pr_target_task) {
                         /* Wrong status, no activate, but directly running */
-                        PR_DBG_PRINT("Get target task running, but no activate(%d)\r\n", __LINE__, 0);
+                        PR_DBG_PRINT("Get target task running, but no activate(%d)\r\n",
+                            __LINE__, 0);
                     }
                     else {
                         /* Target task is not actived, other task gets to run, do nothing */
@@ -222,10 +236,11 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                     /* Normal process, enter next status */
                     if (newTask == pr_target_task) {
                         pr_monitor_status = PR_MONITOR_STATUS_RUNNING;
+                        pr_target_core    = vxCpuIndexGet();
                     }
                     else {
                         /* Target task was preempted, recored it */
-                        pr_preempt_flag = TRUE;
+                        CPUSET_SET(pr_preempt_flag, core_idx);
                     }
                     break;
 
@@ -239,7 +254,7 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                     else {
                         /* Target task is running, get other task to run */
                         /* It means that target task was preempted */
-                        pr_preempt_flag = TRUE;
+                        CPUSET_SET(pr_preempt_flag, core_idx);
                     }
                     break;
 
@@ -254,6 +269,8 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                     pr_monitor_status = PR_MONITOR_STATUS_IDLE;
                     break;
             }
+
+            newEvent = (_Vx_usr_arg_t)newTask;
 
             PR_DBG_PRINT("%s: to schedule %s\r\n", pr_get_action_name(action), taskName(newTask));
             PR_DBG_PRINT("  current status is %d, preempt flag is %d\r\n", pr_monitor_status, pr_preempt_flag);
@@ -273,7 +290,7 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                 case PR_MONITOR_STATUS_RUNNING:
                     if (action == EVENT_INT_ENTER) {
                         /* Target task was preempted, save it */
-                        pr_preempt_flag = TRUE;
+                        CPUSET_SET(pr_preempt_flag, core_idx);
                     }
                     else {
                         /* Don't consider INT_EXIT as preempt */
@@ -294,6 +311,7 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                 PR_DBG_PRINT("%s: interrupt index %x.\r\n", pr_get_action_name(action), newEvent);
             }
             else {
+                newEvent = 0;
                 PR_DBG_PRINT("%s: -\r\n", pr_get_action_name(action), 0);
             }
             PR_DBG_PRINT("  current status is %d, preempt flag is %d\r\n", pr_monitor_status, pr_preempt_flag);
@@ -304,6 +322,7 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
         case EVENT_WINDDELAY:
             taskEvt  = (EVT_TASK_1_T *)addr;
             newEvent = taskEvt->args[0];
+            pr_target_core = PR_FREE_CORE_MARK;
 
             /* Status machine */
             switch (pr_monitor_status) {
@@ -316,7 +335,7 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                             __LINE__, 0);
 
                         /* But set to activate status, for next time */
-                        pr_monitor_status = PR_MONITOR_STATUS_ACTIVE;
+                        pr_monitor_status  = PR_MONITOR_STATUS_ACTIVE;
                     }
                     else {
                         /* Do nothing */
@@ -328,12 +347,62 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                     if (newEvent == pr_target_ent_event) {
 
                         /* If preempted, save all actions */
-                        if (pr_preempt_flag == TRUE) {
+                        if (CPUSET_ISSET(pr_preempt_flag, core_idx)) {
+                            int32_t tmpidx;
+
                             pr_monitor_status = PR_MONITOR_STATUS_EXIT;
+
+                            /* Preempted, keep current core id, remove other core's flag */
+                            tmpidx = pr_event_mng_cur;
+                            while (1) {
+                                /* Pop all activities, until to last exit status */
+                                eventBase = ((tmpidx >= 1) ? (&pr_event_mng[tmpidx - 1]) : 0);
+                                if (!eventBase) {
+                                    break;
+                                }
+                                else {
+
+                                    /* Keep current core preempt, clear others */
+                                    if (PR_EVENT_GET_STATUS(eventBase) != PR_MONITOR_STATUS_EXIT) {
+                                        if (!CPUSET_ISSET(eventBase->flag, core_idx)) {
+                                            CPUSET_ZERO(eventBase->flag);
+                                        }
+                                    }
+                                    else {
+                                        break;
+                                    }
+                                }
+                                tmpidx--;
+                            }
                         }
                         else {
                     #ifdef PREEMPT_SAVE_ALL_ENABLE
+                            int32_t tmpidx;
+
                             pr_monitor_status = PR_MONITOR_STATUS_EXIT;
+
+                            /* Preempted, keep current core id, remove other core's flag */
+                            tmpidx = pr_event_mng_cur;
+                            while (1) {
+                                /* Pop all activities, until to last exit status */
+                                eventBase = ((tmpidx >= 1) ? (&pr_event_mng[tmpidx - 1]) : 0);
+                                if (!eventBase) {
+                                    break;
+                                }
+                                else {
+
+                                    /* Keep current core preempt, clear others */
+                                    if (PR_EVENT_GET_STATUS(eventBase) != PR_MONITOR_STATUS_EXIT) {
+                                        if (!CPUSET_ISSET(eventBase->flag, core_idx)) {
+                                            CPUSET_ZERO(eventBase->flag);
+                                        }
+                                    }
+                                    else {
+                                        break;
+                                    }
+                                }
+                                tmpidx--;
+                            }
                     #else
                             /* No preempt, pop saved actions, recover status */
                             while (1) {
@@ -358,7 +427,7 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                             }
                             pr_monitor_status = PR_MONITOR_STATUS_IDLE;
                     #endif
-                            pr_preempt_flag = FALSE;
+                            CPUSET_ZERO(pr_preempt_flag);
                         }
                     }
                     else {
@@ -374,17 +443,13 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
                     /* Unknown status, reset to default */
                     PR_DBG_PRINT("Unknown status %d, line %d", pr_monitor_status, __LINE__);
                     pr_monitor_status = PR_MONITOR_STATUS_IDLE;
-                    pr_preempt_flag = FALSE;
+                    CPUSET_ZERO(pr_preempt_flag);
                     break;
             }
             break;
 
         default:
-            if (pr_monitor_status != PR_MONITOR_STATUS_IDLE) {
-                /* Save scenario */
-                pr_preempt_flag = TRUE;
-            }
-            break;
+            return ERROR;
     }
 
     /* If not start, ignore it */
@@ -392,11 +457,8 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
         return (ERROR);
     }
 
-    /* 3 means status, timestamp and action */
-    event_size = nbytes + PR_EVENT_NODE_HEAD;
-
     /* If multicore, use it to lock */
-    PR_EVENT_BUF_LOCK();
+    spinLockTaskTake(&pr_spinlock);
 
     /* Save action and timestamp to buffer */
     eventBase = PR_EVENT_CUR_BUF();
@@ -405,19 +467,16 @@ STATUS pr_event_push(event_t action, const void *addr, size_t nbytes)
     eventBase->status  = pr_monitor_status;
     eventBase->counter = pr_sysclkcount_get();
     eventBase->tick    = tickGet();
-
-    /* Save event to buffer */
-    if ((nbytes != 0) && (addr != NULL)) {
-        memcpy ((char *)eventBase->data, addr, nbytes);
-    }
+    eventBase->core    = (uint8_t)core_idx;
+    eventBase->data[0] = newEvent;
+    eventBase->data[1] = (_Vx_usr_arg_t)tmpSem;
 
     /* Increase stack */
     if (pr_event_mng_cur + 1 < PREEMPT_EVENT_MAX_NUMBER) {
-        pr_event_mng[pr_event_mng_cur + 1] = pr_event_mng[pr_event_mng_cur] + (int32_t)event_size;
         pr_event_mng_cur++;
     }
 
-    PR_EVENT_BUF_UNLOCK();
+    spinLockTaskGive(&pr_spinlock);
 
     /* Status switch */
     if (pr_monitor_status == PR_MONITOR_STATUS_EXIT) {
@@ -445,12 +504,12 @@ STATUS pr_event_pop()
     }
 
     /* If multicore, use it to lock */
-    PR_EVENT_BUF_LOCK();
+    spinLockTaskTake(&pr_spinlock);
 
     /* Decrease stack */
     pr_event_mng_cur--;
 
-    PR_EVENT_BUF_UNLOCK();
+    spinLockTaskGive(&pr_spinlock);
 
     pr_cnt_pop++;
 
@@ -782,6 +841,7 @@ STATUS pr_collector_register()
     return (result);
 }
 
+#ifdef PR_ENABLE_DEBUG
 /*******************************************************************************
 *
 * pr_get_action_name - get action name
@@ -831,6 +891,7 @@ char *pr_get_action_name(event_t action)
             return "Unknown";
     }
 }
+#endif
 
 /*******************************************************************************
 *
@@ -859,55 +920,71 @@ void pr_get_string(char *str, event_t action, uint32_t tick, uint32_t counter, T
     switch(action) {
         /* Handle the events that activate a task */
         case EVENT_OBJ_SEMGIVE:
-            sprintf(str, "%s (SEMGIVE)      task %s ready by semGive", timestr, taskName(taskId));
+            sprintf(str, "%s (SEMGIVE)      task %s ready by semGive",
+                timestr, (taskId ? taskName(taskId) : "unknown"));
             break;
         case EVENT_OBJ_MSGSEND:
-            sprintf(str, "%s (MSGSEND)      task %s ready by msgSend", timestr, taskName(taskId));
+            sprintf(str, "%s (MSGSEND)      task %s ready by msgSend",
+                timestr, taskId ? taskName(taskId) : "unknown");
             break;
         case EVENT_OBJ_SIGKILL:
-            sprintf(str, "%s (SIGKILL)      task %s ready by sigKill", timestr, taskName(taskId));
+            sprintf(str, "%s (SIGKILL)      task %s ready by sigKill",
+                timestr, taskId ? taskName(taskId) : "unknown");
             break;
         case EVENT_WINDTICKUNDELAY:
-            sprintf(str, "%s (TICKUNDELAY)  task %s ready by taskDelay timeout", timestr, taskName(taskId));
+            sprintf(str, "%s (TICKUNDELAY)  task %s ready by taskDelay timeout",
+                timestr, taskId ? taskName(taskId) : "unknown");
             break;
         case EVENT_WINDTICKTIMEOUT:
-            sprintf(str, "%s (TICKTIMEOUT)  task %s ready by taskDelay timeout", timestr, taskName(taskId));
+            sprintf(str, "%s (TICKTIMEOUT)  task %s ready by taskDelay timeout",
+                timestr, taskId ? taskName(taskId) : "unknown");
             break;
         case EVENT_WINDTICKANNOUNCETMRWD:
-            sprintf(str, "%s (WDTIMEOUT)    watchdog %x check(not timeout)", timestr, taskId);
+            sprintf(str, "%s (WDTIMEOUT)    watchdog %x check(not timeout)",
+                timestr, taskId);
             break;
 
         case EVENT_INT_ENTER:
-            sprintf(str, "%s (INT_ENTER)    interrupt enter, id(%d)", timestr, taskId);
+            sprintf(str, "%s (INT_ENTER)    interrupt enter, id(%d)",
+                timestr, taskId);
             break;
         case EVENT_INT_EXIT_K:
-            sprintf(str, "%s (INT_EXIT_K)   interrupt exit", timestr);
+            sprintf(str, "%s (INT_EXIT_K)   interrupt exit",
+                timestr);
             break;
         case EVENT_INT_EXIT:
-            sprintf(str, "%s (INT_EXIT)     interrupt exit", timestr);
+            sprintf(str, "%s (INT_EXIT)     interrupt exit",
+                timestr);
             break;
 
         case EVENT_OBJ_SEMTAKE:
-            sprintf(str, "%s (SEMTAKE)      task pending by semTake", timestr);
+            sprintf(str, "%s (SEMTAKE)      task pending by semTake",
+                timestr);
             break;
         case EVENT_OBJ_MSGRECEIVE:
-            sprintf(str, "%s (MSGRECEIVE)   task pending by msgReceive", timestr);
+            sprintf(str, "%s (MSGRECEIVE)   task pending by msgReceive",
+                timestr);
             break;
         case EVENT_WINDDELAY:
-            sprintf(str, "%s (TICKDELAY)    task delay by taskDelay", timestr);
+            sprintf(str, "%s (TICKDELAY)    task delay by taskDelay",
+                timestr);
             break;
         case EVENT_WINDWDSTART:
-            sprintf(str, "%s (WDSTART)      start watchdog", timestr);
+            sprintf(str, "%s (WDSTART)      start watchdog",
+                timestr);
             break;
 
         case EVENT_WIND_EXIT_DISPATCH:
-            sprintf(str, "%s (DISPATCH)     task %s running", timestr, taskName(taskId));
+            sprintf(str, "%s (DISPATCH)     task %s running",
+                timestr, taskId ? taskName(taskId) : "unknown");
             break;
         case EVENT_WIND_EXIT_DISPATCH_PI:
-            sprintf(str, "%s (DISPATCH)     task %s running", timestr, taskName(taskId));
+            sprintf(str, "%s (DISPATCH)     task %s running",
+                timestr, taskId ? taskName(taskId) : "unknown");
             break;
         default:
-            sprintf(str, "%s Unknown        action %d", timestr, action);
+            sprintf(str, "%s Unknown        action %d",
+                timestr, action);
             break;
     }
 }
@@ -924,21 +1001,18 @@ STATUS pr_print()
 {
     int32_t         eventNum;
     int32_t         loopNo;
-    TASK_ID         targetTask = 0;
     int16_t         action;
     uint32_t        counter;
     uint32_t        tick;
     TASK_ID         taskId;
-    int32_t         status;
-    uint8_t         preempt;
-    _Vx_usr_arg_t   semId;
-    EVT_TASK_1_T    *taskEvt;
+    uint8_t         status;
+    cpuset_t        preempt;
+    SEM_ID          semId;
     /*struct msg_q    *msgQId;*/
     char            str[256];
-    char            headstr[8];
-    PR_EVENT_NODE  *eventBase;
-    EVENT_INT_ENTER_T *intInfo;
-    EVENT_WIND_EXIT_DISPATCH_T *ctxInfo;
+    char            headstr[16];
+    PR_EVENT_NODE   *eventBase;
+    uint32_t        coreid;
 
     eventNum = pr_event_mng_cur;
     status   = PR_MONITOR_STATUS_IDLE;
@@ -947,20 +1021,23 @@ STATUS pr_print()
 
     for (loopNo = 0; loopNo < eventNum; loopNo++) {
 
-        eventBase = (PR_EVENT_NODE *)(pr_event_buf + pr_event_mng[loopNo]);
+        eventBase = (PR_EVENT_NODE *)(&pr_event_mng[loopNo]);
         preempt   = eventBase->flag;
         counter   = eventBase->counter;
         action    = eventBase->event;
         tick      = eventBase->tick;
+        taskId    = (TASK_ID)eventBase->data[0];
+        semId     = (SEM_ID)eventBase->data[1];
+        coreid    = eventBase->core;
 
         if (((status == PR_MONITOR_STATUS_EXIT)
            ||(status == PR_MONITOR_STATUS_IDLE))
-           &&(eventBase->status != PR_MONITOR_STATUS_IDLE)) {
+          &&(eventBase->status != PR_MONITOR_STATUS_IDLE)) {
             sprintf(headstr, "\r\n----");
         }
         else if ((status != PR_MONITOR_STATUS_IDLE)
-           &&((eventBase->status == PR_MONITOR_STATUS_EXIT)
-            ||(eventBase->status == PR_MONITOR_STATUS_IDLE))) {
+          &&((eventBase->status == PR_MONITOR_STATUS_EXIT)
+           ||(eventBase->status == PR_MONITOR_STATUS_IDLE))) {
             sprintf(headstr, "----");
         }
         else {
@@ -972,77 +1049,38 @@ STATUS pr_print()
             }
         }
 
-        status    = eventBase->status;
+        status  = eventBase->status;
 
         switch(action) {
             /* Handle the events that activate a task */
             case EVENT_OBJ_SEMGIVE:
-                taskEvt = (EVT_TASK_1_T *)eventBase->data;
-
-                /* Get actived task */
-                semId  = (taskEvt->args[0]);
-                taskId = (TASK_ID)SEM_OWNER((SEM_ID)(taskEvt->args[0]));
-                if (!targetTask) {
-                    targetTask = taskId;
-                }
                 pr_get_string(str, action, tick, counter, taskId);
-                printf("%s%s %x\r\n", headstr, str, semId);
-                break;
-
-            /*case EVENT_OBJ_MSGSEND:
-                taskEvt = (EVT_OBJ_1_T *)bufPointer;
-
-                msgQId = (struct msg_q *)(taskEvt->args[0]);
-
-                taskId = msgQId->msgQ.pendQ;
-                if (!targetTask) {
-                    targetTask = taskId;
-                }
-                pr_get_string(str, action, counter, taskId);
-                printf("%s%s\r\n", headstr, str);
-                break;*/
-
-            case EVENT_OBJ_SIGKILL:
-            case EVENT_WINDTICKUNDELAY:
-            case EVENT_WINDTICKTIMEOUT:
-                taskEvt = (EVT_TASK_1_T *)eventBase->data;
-                taskId  = (TASK_ID)taskEvt->args[0];
-                if (!targetTask) {
-                    targetTask = taskId;
-                }
-                pr_get_string(str, action, tick, counter, taskId);
-                printf("%s%s\r\n", headstr, str);
+                printf("%s%s %lx, core %d\r\n", headstr, str, semId, coreid);
                 break;
 
             case EVENT_OBJ_SEMTAKE:
-                taskEvt = (EVT_TASK_1_T *)eventBase->data;
-                semId   = taskEvt->args[0];
-                pr_get_string(str, action, tick, counter, (TASK_ID)semId);
-                printf("%s%s %x\r\n", headstr, str, semId);
+                pr_get_string(str, action, tick, counter, taskId);
+                printf("%s%s %lx, core %d\r\n", headstr, str, taskId, coreid);
                 break;
 
             case EVENT_OBJ_MSGRECEIVE:
             case EVENT_WINDDELAY:
             case EVENT_WINDWDSTART:
                 pr_get_string(str, action, tick, counter, 0);
-                printf("%s%s\r\n", headstr, str);
+                printf("%s%s, core %d\r\n", headstr, str, coreid);
                 break;
 
+            case EVENT_OBJ_MSGSEND:
+            case EVENT_OBJ_SIGKILL:
+            case EVENT_WINDTICKUNDELAY:
+            case EVENT_WINDTICKTIMEOUT:
             case EVENT_WIND_EXIT_DISPATCH:
             case EVENT_WIND_EXIT_DISPATCH_PI:
-                ctxInfo = (EVENT_WIND_EXIT_DISPATCH_T *)eventBase->data;
-                taskId  = (TASK_ID)ctxInfo->taskIdNew;
-
-                pr_get_string(str, action, tick, counter, taskId);
-                printf("%s%s\r\n", headstr, str);
-                break;
-
             case EVENT_INT_ENTER:
             case EVENT_INT_EXIT_K:
             case EVENT_INT_EXIT:
-                intInfo = (EVENT_INT_ENTER_T *)eventBase->data;
-                pr_get_string(str, action, tick, counter, (TASK_ID)intInfo->interruptId);
-                printf("%s%s\r\n", headstr, str);
+                pr_get_string(str, action, tick, counter, taskId);
+                printf("%s%s, core %d\r\n", headstr, str, coreid);
                 break;
 
             default:
@@ -1084,16 +1122,24 @@ STATUS pr_start(long taskNameOrId)
         pr_target_task = tid;
     }
 
-    /* Alloc buffer */
-    if (!pr_event_buf) {
-        pr_event_buf = malloc(PREEMPT_EVENT_MAX_NUMBER * PR_EVENT_NODE_MAX_SIZE);
+    /* If multi core, must set affinity */
+    if (vxCpuConfiguredGet() > 1) {
+        cpuset_t affinity = 0;
+
+        taskCpuAffinityGet(pr_target_task, &affinity);
+        if (affinity == 0) {
+            printf("\r\nThis cpu is multicore, please set affinity by taskCpuAffinitySet().\r\n");
+            printf("Otherwise you will get inaccurate results!\r\n\r\n");
+        }
     }
+
+    spinLockTaskInit(&pr_spinlock, 0);
 
     /* Init parameters */
     memset(pr_event_mng, 0, sizeof(pr_event_mng));
     pr_event_mng_cur    = 0;
     pr_monitor_status   = PR_MONITOR_STATUS_IDLE;
-    pr_preempt_flag     = FALSE;
+    pr_preempt_flag     = 0;
     pr_target_ent_event = 0;
     pr_cnt_push         = 0;
     pr_cnt_pop          = 0;
@@ -1128,12 +1174,6 @@ STATUS pr_stop()
 
     /* Show result */
     pr_print();
-
-    /* Free buffer */
-    if (pr_event_buf) {
-        free(pr_event_buf);
-        pr_event_buf = NULL;
-    }
 
     return OK;
 }

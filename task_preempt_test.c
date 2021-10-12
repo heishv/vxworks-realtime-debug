@@ -53,6 +53,7 @@ STATUS pr_test_stub1()
         while(loopNum--);
         semGive(pr_test_sem_mux);
 
+        //printf(".");
     }
 
     return OK;
@@ -118,7 +119,7 @@ STATUS pr_test_stub4()
     struct ifreq req;
     int netfd;
     ssize_t ret;
-    char ethname[] = "cpsw0";
+    char ethname[] = "gei0"; //"simnet_nat0";// "cpsw0";
     uint8_t tmpbuf[1600];
 
     /* Setup socket */
@@ -197,6 +198,7 @@ void pr_test_dbg_info()
 void pr_test(int index)
 {
     TASK_ID tidTarget1, tidTarget2, tidTarget3, tidTarget4, tidTarget;
+    cpuset_t affinity = 0;
     extern void td(long taskNameOrId);
 
     if (pr_test_sem_bin == NULL) {
@@ -243,6 +245,10 @@ void pr_test(int index)
             tidTarget = tidTarget1;
             break;
     }
+
+    CPUSET_ZERO(affinity);
+    CPUSET_SET(affinity, (vxCpuConfiguredGet() - 1));
+    taskCpuAffinitySet(tidTarget, affinity);
 
     pr_start((long)tidTarget);
     taskDelay(500);
